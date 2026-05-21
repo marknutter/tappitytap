@@ -22,3 +22,7 @@ DerivedData/
 # Build artifacts
 *.dSYM
 *.dSYM.zip
+
+# Swift Package build outputs
+.build/
+Package.resolved
