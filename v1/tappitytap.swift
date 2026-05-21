@@ -34,10 +34,13 @@ let SCALE: Double = 65536.0
 let SAMPLE_HZ: Double = 1000.0
 let GRAVITY_TAU_S: Double = 1.0
 let STA_TAU_S: Double = 0.001       // 1 ms — rides the impact edge
+// --- These four are what a settings UI will eventually expose. ---
 let HISTORY_MS = 20                  // sliding window for "recent valley"
-let DELTA_TRIGGER_G: Double = 0.04   // rise-from-valley needed to fire
-let MIN_PEAK_G: Double = 0.04        // peak must exceed this absolutely
-let REFRACTORY_S: Double = 0.025     // 25 ms minimum gap (40 Hz ceiling)
+let DELTA_TRIGGER_G: Double = 0.025  // rise-from-valley needed to fire
+let MIN_PEAK_G: Double = 0.025       // peak must exceed this absolutely
+let PEAK_WINDOW_S: Double = 0.008    // 8 ms — capture the impact peak, then fire
+let POST_FIRE_BLACKOUT_S: Double = 0.050  // 50 ms — let the chassis ring out
+// Total min gap between fires = PEAK_WINDOW_S + POST_FIRE_BLACKOUT_S = 58 ms (~17 Hz)
 let PRIME_SAMPLES = 200
 
 let SOFT_INTENSITY: Double = 0.05
@@ -111,7 +114,11 @@ var gx: Double = 0, gy: Double = 0, gz: Double = -1
 var sta: Double = 0
 var samplesSeen: UInt64 = 0
 var primed = false
-var refractoryRemaining = 0
+
+// State machine: idle -> peakCapture (after trigger) -> blackout -> idle
+enum DetectorState { case idle, peakCapture, blackout }
+var state: DetectorState = .idle
+var stateRemaining = 0
 var peakStaInWindow: Double = 0
 
 // Ring buffer of recent STA samples for valley tracking.
@@ -123,7 +130,8 @@ func emaAlpha(tauSeconds: Double) -> Double {
 }
 let GRAVITY_A = emaAlpha(tauSeconds: GRAVITY_TAU_S)
 let STA_A     = emaAlpha(tauSeconds: STA_TAU_S)
-let REFRACTORY_SAMPLES = Int(REFRACTORY_S * SAMPLE_HZ)
+let PEAK_WINDOW_SAMPLES   = Int(PEAK_WINDOW_S   * SAMPLE_HZ)
+let BLACKOUT_SAMPLES      = Int(POST_FIRE_BLACKOUT_S * SAMPLE_HZ)
 
 var tapPlayer: TapPlayer!
 var tapCount = 0
@@ -145,20 +153,32 @@ func processSample(x: Double, y: Double, z: Double) {
     if samplesSeen < PRIME_SAMPLES { return }
     if !primed {
         primed = true
-        print("listening. delta=\(DELTA_TRIGGER_G)g minPeak=\(MIN_PEAK_G)g refractory=\(REFRACTORY_S)s")
+        print("listening. delta=\(DELTA_TRIGGER_G)g minPeak=\(MIN_PEAK_G)g peakWin=\(PEAK_WINDOW_S)s blackout=\(POST_FIRE_BLACKOUT_S)s")
     }
 
-    if refractoryRemaining > 0 {
-        refractoryRemaining -= 1
+    switch state {
+    case .peakCapture:
         if sta > peakStaInWindow { peakStaInWindow = sta }
-        if refractoryRemaining == 0 {
+        stateRemaining -= 1
+        if stateRemaining == 0 {
             tapCount += 1
             let intensity = peakStaInWindow
             print(String(format: "tap #%-3d  i=%.3f", tapCount, intensity))
             tapPlayer.playTap(intensity: intensity)
             peakStaInWindow = 0
+            state = .blackout
+            stateRemaining = BLACKOUT_SAMPLES
         }
         return
+
+    case .blackout:
+        // Hard mute on detection so chassis ring-out can't produce phantom taps.
+        stateRemaining -= 1
+        if stateRemaining == 0 { state = .idle }
+        return
+
+    case .idle:
+        break
     }
 
     // Rising-edge detector: fire on rise from recent valley, regardless of
@@ -168,7 +188,8 @@ func processSample(x: Double, y: Double, z: Double) {
     for s in history where s < minRecent { minRecent = s }
     let rise = sta - minRecent
     if rise > DELTA_TRIGGER_G && sta > MIN_PEAK_G {
-        refractoryRemaining = REFRACTORY_SAMPLES
+        state = .peakCapture
+        stateRemaining = PEAK_WINDOW_SAMPLES
         peakStaInWindow = sta
     }
 }
