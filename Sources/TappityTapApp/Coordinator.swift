@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import ServiceManagement
 import TappityTapShared
 
 // State + glue: holds settings, owns the IPC client, owns the audio engine,
@@ -26,9 +27,13 @@ final class Coordinator: ObservableObject {
     @Published var helperConnected = false
     @Published var lastTapIntensity: Double = 0
     @Published var totalTaps: Int = 0
+    @Published var daemonStatus: SMAppService.Status = .notFound
 
     private let client = IPCClient(path: SocketPath.default)
     private let player: TapPlayer
+    private let daemonService = SMAppService.daemon(
+        plistName: "com.marknutter.tappitytap.helper.plist")
+    private var daemonStatusTimer: Timer?
 
     init() {
         self.player = try! TapPlayer()
@@ -53,6 +58,40 @@ final class Coordinator: ObservableObject {
             }
         }
         client.start()
+
+        refreshDaemonStatus()
+        daemonStatusTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            self?.refreshDaemonStatus()
+        }
+    }
+
+    // ---- Daemon management ----
+
+    func refreshDaemonStatus() {
+        let s = daemonService.status
+        DispatchQueue.main.async { self.daemonStatus = s }
+    }
+
+    func installDaemon() {
+        do {
+            try daemonService.register()
+        } catch {
+            NSLog("daemon register failed: \(error)")
+        }
+        refreshDaemonStatus()
+    }
+
+    func uninstallDaemon() {
+        do {
+            try daemonService.unregister()
+        } catch {
+            NSLog("daemon unregister failed: \(error)")
+        }
+        refreshDaemonStatus()
+    }
+
+    func openLoginItemsSettings() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 
     // ---- Param mapping ----

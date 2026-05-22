@@ -1,4 +1,5 @@
 import SwiftUI
+import ServiceManagement
 
 struct MenuContent: View {
     @EnvironmentObject var coordinator: Coordinator
@@ -15,6 +16,8 @@ struct MenuContent: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            DaemonSection()
 
             Toggle("Enabled", isOn: $coordinator.enabled)
                 .toggleStyle(.switch)
@@ -78,5 +81,65 @@ struct MenuContent: View {
         }
         .padding(16)
         .frame(width: 280)
+    }
+}
+
+struct DaemonSection: View {
+    @EnvironmentObject var coordinator: Coordinator
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Helper daemon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(statusLabel)
+                    .font(.caption)
+                    .foregroundStyle(statusColor)
+            }
+            actionRow
+        }
+    }
+
+    private var statusLabel: String {
+        switch coordinator.daemonStatus {
+        case .notRegistered:    return "not installed"
+        case .enabled:          return "installed"
+        case .requiresApproval: return "needs approval"
+        case .notFound:         return "not in bundle"
+        @unknown default:       return "unknown"
+        }
+    }
+
+    private var statusColor: Color {
+        switch coordinator.daemonStatus {
+        case .enabled:          return .green
+        case .requiresApproval: return .orange
+        case .notRegistered:    return .secondary
+        case .notFound:         return .red
+        @unknown default:       return .secondary
+        }
+    }
+
+    @ViewBuilder
+    private var actionRow: some View {
+        switch coordinator.daemonStatus {
+        case .notRegistered:
+            Button("Install Helper") { coordinator.installDaemon() }
+        case .requiresApproval:
+            HStack {
+                Button("Open Login Items") { coordinator.openLoginItemsSettings() }
+                Button("Uninstall") { coordinator.uninstallDaemon() }
+            }
+        case .enabled:
+            Button("Uninstall Helper") { coordinator.uninstallDaemon() }
+        case .notFound:
+            Text("Run scripts/build-app.sh and launch the resulting .app.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        @unknown default:
+            EmptyView()
+        }
     }
 }
