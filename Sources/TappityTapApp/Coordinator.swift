@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import AppKit
+import Carbon
 import TappityTapShared
 
 // LaunchDaemon install state, derived from /Library/LaunchDaemons.
@@ -45,6 +46,7 @@ final class Coordinator: ObservableObject {
     private let client = IPCClient(path: SocketPath.default)
     private let player: TapPlayer
     private var daemonStatusTimer: Timer?
+    private var toggleHotKey: GlobalHotKey?
 
     private let daemonLabel = "com.marknutter.tappitytap.helper"
     private var systemPlistPath: String { "/Library/LaunchDaemons/\(daemonLabel).plist" }
@@ -77,6 +79,12 @@ final class Coordinator: ObservableObject {
         refreshDaemonStatus()
         daemonStatusTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
             self?.refreshDaemonStatus()
+        }
+
+        // Global hotkey: ⌃⌥⌘T toggles the enabled state from anywhere.
+        let mods = UInt32(cmdKey | optionKey | controlKey)
+        toggleHotKey = GlobalHotKey(keyCode: UInt32(kVK_ANSI_T), modifiers: mods) { [weak self] in
+            self?.enabled.toggle()
         }
     }
 

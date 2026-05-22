@@ -18,8 +18,14 @@ struct MenuContent: View {
 
             DaemonSection()
 
-            Toggle("Enabled", isOn: $coordinator.enabled)
-                .toggleStyle(.switch)
+            HStack {
+                Toggle("Enabled", isOn: $coordinator.enabled)
+                    .toggleStyle(.switch)
+                Spacer()
+                Text("⌃⌥⌘T")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Sound pack").font(.caption).foregroundStyle(.secondary)
