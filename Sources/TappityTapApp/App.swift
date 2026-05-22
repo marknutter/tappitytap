@@ -7,7 +7,8 @@ struct TappityTapApp: App {
 
     init() {
         // Background app — no Dock icon, just the menu-bar item.
-        NSApp.setActivationPolicy(.accessory)
+        // Use NSApplication.shared (not NSApp); the latter is still nil at App.init time.
+        NSApplication.shared.setActivationPolicy(.accessory)
     }
 
     var body: some Scene {
@@ -15,8 +16,7 @@ struct TappityTapApp: App {
             MenuContent()
                 .environmentObject(coordinator)
         } label: {
-            // Drum icon — shows in the menu bar.
-            Image(systemName: coordinator.enabled ? "drum.fill" : "drum")
+            Image(systemName: coordinator.enabled ? "waveform" : "waveform.slash")
         }
         .menuBarExtraStyle(.window)
     }

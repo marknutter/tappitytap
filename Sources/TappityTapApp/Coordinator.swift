@@ -56,19 +56,25 @@ final class Coordinator: ObservableObject {
     }
 
     // ---- Param mapping ----
-    // Sensitivity slider 0..1 -> deltaG and minPeakG between (0.080, 0.005).
-    // High slider = lower threshold = more sensitive.
+    // Log-linear so the slider middle hits the empirically tuned v1 values
+    // (delta = 0.025 g, blackoutMs ≈ 50). Geometric mean of the endpoints
+    // lands on the proven tuning.
+    //
+    // Sensitivity: slider 0..1 -> deltaG/minPeakG between 0.080 g (low, slider 0)
+    // and 0.010 g (high, slider 1). At slider 0.5 -> sqrt(0.080 * 0.010) ≈ 0.028 g.
     private var sensitivityToFloors: (delta: Double, minPeak: Double) {
-        let high = 0.080
-        let low  = 0.005
-        let v = high - (high - low) * sensitivity
+        let logLow  = log(0.010)
+        let logHigh = log(0.080)
+        let v = exp(logHigh - (logHigh - logLow) * sensitivity)
         return (v, v)
     }
 
-    // Debounce slider 0..1 -> blackoutMs between (10ms, 200ms).
-    // Higher slider = longer blackout = fewer doubles at the cost of max rate.
+    // Debounce: slider 0..1 -> blackoutMs between 10 ms (slider 0, fastest)
+    // and 200 ms (slider 1, fewest doubles). Slider 0.5 -> sqrt(10 * 200) ≈ 45 ms.
     private var debounceToBlackoutMs: Int {
-        return Int(10.0 + (200.0 - 10.0) * debounce)
+        let logLow  = log(10.0)
+        let logHigh = log(200.0)
+        return Int(exp(logLow + (logHigh - logLow) * debounce))
     }
 
     func pushParams() {
