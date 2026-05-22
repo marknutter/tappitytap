@@ -8,29 +8,33 @@ It reads the Apple Silicon SPU accelerometer at 1 kHz via an undocumented IOKit 
 
 **M2-class or newer Apple Silicon MacBook.** The SPU accelerometer is exposed as a HID device (Apple vendor `0x5ac`, product `0x8104`, transport `SPU`, usage page `0xFF00`, usage `3`). M1 base MacBooks do not have it. `prototypes/probe/probe.swift` verifies presence.
 
-## Quick start
+## Quick start — bundled .app (no recurring sudo)
 
-The project is split into a root helper daemon and a user-context menu-bar app.
+```bash
+./scripts/build-app.sh
+cp -R dist/tappitytap.app /Applications/
+open /Applications/tappitytap.app
+```
+
+A waveform icon appears in your menu bar. Click it and choose **Install Helper…** — macOS will prompt for your password once. The app generates a LaunchDaemon plist at `/Library/LaunchDaemons/com.marknutter.tappitytap.helper.plist`, registers it with `launchctl`, and the helper auto-starts immediately. From that point on the helper relaunches at every boot and the app talks to it over the socket without any further sudo.
+
+To remove later, click **Uninstall Helper…** in the same menu.
+
+## Development workflow (no install needed)
+
+For fast iteration on either binary:
 
 ```bash
 swift build
 
-# Terminal 1: start the helper (needs sudo)
+# Terminal 1 — helper, manual sudo
 sudo .build/debug/tappitytap-helper
 
-# Terminal 2: launch the menu-bar app
+# Terminal 2 — menu-bar app
 .build/debug/tappitytap
 ```
 
-Look for the drum icon in your menu bar. Click it to see sliders for sensitivity, debounce, and volume, plus an on/off toggle. Tap the chassis to drum.
-
-For a release build (lower latency, smaller binaries):
-
-```bash
-swift build -c release
-sudo .build/release/tappitytap-helper
-.build/release/tappitytap
-```
+The app auto-reconnects if the helper restarts, and vice versa. The same socket path (`/tmp/tappitytap.sock`) is used whether the helper was launched by `launchctl` or by you in a terminal, so you can dev iterate against a system-installed daemon too.
 
 ## Why two binaries
 
@@ -109,6 +113,7 @@ tappitytap/
 - [x] Phase 1: Bare accelerometer reader
 - [x] Phase 2: Tap detector
 - [x] Phase 3: Sound playback (single-process prototype)
-- [x] Phase 4a: Split into root helper daemon + SwiftUI menu-bar app (current)
-- [ ] Phase 4b: SMAppService.daemon install so the helper launches automatically without manual `sudo`
+- [x] Phase 4a: Split into root helper daemon + SwiftUI menu-bar app
+- [x] Phase 4b: One-click Install Helper via launchctl + osascript (no recurring sudo)
 - [ ] Phase 5: Real sound packs (clicks/pops + soft drum kit, switchable from UI)
+- [ ] Stretch: Developer ID signing + notarization so SMAppService.daemon works (currently we use the launchctl path because ad-hoc-signed apps can't register SMAppService daemons)

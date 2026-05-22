@@ -21,7 +21,6 @@ echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 mkdir -p "$APP/Contents/Resources"
-mkdir -p "$APP/Contents/Library/LaunchDaemons"
 
 cp .build/release/tappitytap        "$APP/Contents/MacOS/tappitytap"
 cp .build/release/tappitytap-helper "$APP/Contents/MacOS/tappitytap-helper"
@@ -55,28 +54,10 @@ cat > "$APP/Contents/Info.plist" << EOF
 </plist>
 EOF
 
-# Daemon plist consumed by SMAppService.daemon(plistName:). BundleProgram is
-# resolved relative to the .app's Contents/, so the bundle stays relocatable.
-cat > "$APP/Contents/Library/LaunchDaemons/${HELPER_LABEL}.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${HELPER_LABEL}</string>
-    <key>BundleProgram</key>
-    <string>Contents/MacOS/tappitytap-helper</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/tappitytap.helper.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/tappitytap.helper.err.log</string>
-</dict>
-</plist>
-EOF
+# Note on the LaunchDaemon: the app generates a plist on demand at install
+# time (Coordinator.installDaemon) with an absolute Program path. SMAppService
+# would let us ship a BundleProgram-relative plist inside the bundle, but it
+# requires a Developer ID signature — out of scope for an ad-hoc build.
 
 echo "==> Ad-hoc signing"
 # Sign the helper first (inner content), then the whole bundle.

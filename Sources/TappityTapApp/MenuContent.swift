@@ -1,5 +1,4 @@
 import SwiftUI
-import ServiceManagement
 
 struct MenuContent: View {
     @EnvironmentObject var coordinator: Coordinator
@@ -103,43 +102,35 @@ struct DaemonSection: View {
     }
 
     private var statusLabel: String {
-        switch coordinator.daemonStatus {
-        case .notRegistered:    return "not installed"
-        case .enabled:          return "installed"
-        case .requiresApproval: return "needs approval"
-        case .notFound:         return "not in bundle"
-        @unknown default:       return "unknown"
+        switch coordinator.daemonState {
+        case .notInstalled: return "not installed"
+        case .installed:    return "installed"
+        case .unavailable:  return "not in bundle"
         }
     }
 
     private var statusColor: Color {
-        switch coordinator.daemonStatus {
-        case .enabled:          return .green
-        case .requiresApproval: return .orange
-        case .notRegistered:    return .secondary
-        case .notFound:         return .red
-        @unknown default:       return .secondary
+        switch coordinator.daemonState {
+        case .installed:    return .green
+        case .notInstalled: return .secondary
+        case .unavailable:  return .red
         }
     }
 
     @ViewBuilder
     private var actionRow: some View {
-        switch coordinator.daemonStatus {
-        case .notRegistered:
-            Button("Install Helper") { coordinator.installDaemon() }
-        case .requiresApproval:
-            HStack {
-                Button("Open Login Items") { coordinator.openLoginItemsSettings() }
-                Button("Uninstall") { coordinator.uninstallDaemon() }
-            }
-        case .enabled:
-            Button("Uninstall Helper") { coordinator.uninstallDaemon() }
-        case .notFound:
-            Text("Run scripts/build-app.sh and launch the resulting .app.")
+        switch coordinator.daemonState {
+        case .notInstalled:
+            Button("Install Helper…") { coordinator.installDaemon() }
+            Text("Prompts for your password once. After that the helper auto-starts at boot, no terminal needed.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-        @unknown default:
-            EmptyView()
+        case .installed:
+            Button("Uninstall Helper…") { coordinator.uninstallDaemon() }
+        case .unavailable:
+            Text("Build the .app via scripts/build-app.sh and launch it from /Applications.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 }

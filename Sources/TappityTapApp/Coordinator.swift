@@ -1,8 +1,14 @@
 import Foundation
 import SwiftUI
 import AppKit
-import ServiceManagement
 import TappityTapShared
+
+// LaunchDaemon install state, derived from /Library/LaunchDaemons.
+enum DaemonInstallState {
+    case notInstalled        // no plist on disk
+    case installed           // plist on disk (presumed loaded — launchctl bootstrap is idempotent at boot)
+    case unavailable         // not running from a .app bundle
+}
 
 // State + glue: holds settings, owns the IPC client, owns the audio engine,
 // pushes setParams to the helper when the user changes a slider.
@@ -27,13 +33,14 @@ final class Coordinator: ObservableObject {
     @Published var helperConnected = false
     @Published var lastTapIntensity: Double = 0
     @Published var totalTaps: Int = 0
-    @Published var daemonStatus: SMAppService.Status = .notFound
+    @Published var daemonState: DaemonInstallState = .unavailable
 
     private let client = IPCClient(path: SocketPath.default)
     private let player: TapPlayer
-    private let daemonService = SMAppService.daemon(
-        plistName: "com.marknutter.tappitytap.helper.plist")
     private var daemonStatusTimer: Timer?
+
+    private let daemonLabel = "com.marknutter.tappitytap.helper"
+    private var systemPlistPath: String { "/Library/LaunchDaemons/\(daemonLabel).plist" }
 
     init() {
         self.player = try! TapPlayer()
@@ -65,33 +72,70 @@ final class Coordinator: ObservableObject {
         }
     }
 
-    // ---- Daemon management ----
+    // ---- Daemon management (via launchctl, single sudo prompt at install) ----
+
+    private var bundledHelperPath: String? {
+        // Only present when running from a real .app bundle. Bundle.main.bundlePath
+        // for a plain SPM binary points at the binary's parent dir, where there's
+        // no helper alongside — that's how we detect "dev binary, not installable".
+        let candidate = Bundle.main.bundlePath + "/Contents/MacOS/tappitytap-helper"
+        return FileManager.default.fileExists(atPath: candidate) ? candidate : nil
+    }
 
     func refreshDaemonStatus() {
-        let s = daemonService.status
-        DispatchQueue.main.async { self.daemonStatus = s }
+        let newState: DaemonInstallState
+        if bundledHelperPath == nil {
+            newState = .unavailable
+        } else if FileManager.default.fileExists(atPath: systemPlistPath) {
+            newState = .installed
+        } else {
+            newState = .notInstalled
+        }
+        DispatchQueue.main.async { self.daemonState = newState }
     }
 
     func installDaemon() {
-        do {
-            try daemonService.register()
-        } catch {
-            NSLog("daemon register failed: \(error)")
-        }
+        guard let helperPath = bundledHelperPath else { return }
+        // Generate the plist at /tmp with an absolute Program path so launchd
+        // can find the helper from the system context (no BundleProgram support
+        // outside SMAppService).
+        let plist: [String: Any] = [
+            "Label": daemonLabel,
+            "Program": helperPath,
+            "RunAtLoad": true,
+            "KeepAlive": true,
+            "StandardOutPath": "/tmp/tappitytap.helper.out.log",
+            "StandardErrorPath": "/tmp/tappitytap.helper.err.log",
+        ]
+        let tmpPath = "/tmp/\(daemonLabel).plist"
+        guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else { return }
+        try? data.write(to: URL(fileURLWithPath: tmpPath))
+
+        let script = """
+        do shell script "cp '\(tmpPath)' '\(systemPlistPath)' && chown root:wheel '\(systemPlistPath)' && chmod 644 '\(systemPlistPath)' && launchctl bootstrap system '\(systemPlistPath)' 2>/dev/null; launchctl enable 'system/\(daemonLabel)' 2>/dev/null; launchctl kickstart -k 'system/\(daemonLabel)' 2>/dev/null" with administrator privileges with prompt "tappitytap needs to install its background helper, which reads the accelerometer (requires root)."
+        """
+        runOSAScript(script)
         refreshDaemonStatus()
     }
 
     func uninstallDaemon() {
-        do {
-            try daemonService.unregister()
-        } catch {
-            NSLog("daemon unregister failed: \(error)")
-        }
+        let script = """
+        do shell script "launchctl bootout 'system/\(daemonLabel)' 2>/dev/null; rm -f '\(systemPlistPath)'" with administrator privileges with prompt "tappitytap is removing its background helper."
+        """
+        runOSAScript(script)
         refreshDaemonStatus()
     }
 
-    func openLoginItemsSettings() {
-        SMAppService.openSystemSettingsLoginItems()
+    private func runOSAScript(_ source: String) {
+        let task = Process()
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", source]
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            NSLog("osascript failed: \(error)")
+        }
     }
 
     // ---- Param mapping ----
