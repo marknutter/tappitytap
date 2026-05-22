@@ -115,5 +115,5 @@ tappitytap/
 - [x] Phase 3: Sound playback (single-process prototype)
 - [x] Phase 4a: Split into root helper daemon + SwiftUI menu-bar app
 - [x] Phase 4b: One-click Install Helper via launchctl + osascript (no recurring sudo)
-- [ ] Phase 5: Real sound packs (clicks/pops + soft drum kit, switchable from UI)
+- [x] Phase 5: Switchable sound packs — pentatonic clicks, mechanical clicks (typewriter + woodblock), soft drum kit (hat / snare / kick mapped by tap intensity). All synthesized in-process — no sample files.
 - [ ] Stretch: Developer ID signing + notarization so SMAppService.daemon works (currently we use the launchctl path because ad-hoc-signed apps can't register SMAppService daemons)

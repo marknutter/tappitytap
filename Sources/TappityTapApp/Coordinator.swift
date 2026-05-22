@@ -28,6 +28,13 @@ final class Coordinator: ObservableObject {
     @AppStorage("volume") var volume: Double = 0.8 {
         didSet { player.masterVolume = Float(volume) }
     }
+    @AppStorage("soundPack") var soundPackId: String = SoundPackKind.pentatonic.rawValue {
+        didSet {
+            if let kind = SoundPackKind(rawValue: soundPackId) {
+                player.setPack(kind)
+            }
+        }
+    }
 
     // ---- Live status ----
     @Published var helperConnected = false
@@ -43,7 +50,8 @@ final class Coordinator: ObservableObject {
     private var systemPlistPath: String { "/Library/LaunchDaemons/\(daemonLabel).plist" }
 
     init() {
-        self.player = try! TapPlayer()
+        let initialKind = SoundPackKind(rawValue: UserDefaults.standard.string(forKey: "soundPack") ?? "") ?? .pentatonic
+        self.player = try! TapPlayer(initialPack: initialKind)
         self.player.masterVolume = Float(volume)
         client.onConnect = { [weak self] in
             DispatchQueue.main.async {

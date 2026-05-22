@@ -22,6 +22,17 @@ struct MenuContent: View {
                 .toggleStyle(.switch)
 
             VStack(alignment: .leading, spacing: 4) {
+                Text("Sound pack").font(.caption).foregroundStyle(.secondary)
+                Picker("", selection: $coordinator.soundPackId) {
+                    ForEach(SoundPackKind.allCases) { kind in
+                        Text(kind.displayName).tag(kind.rawValue)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text("Sensitivity")
                     Spacer()
