@@ -127,8 +127,11 @@ final class Coordinator: ObservableObject {
         guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else { return }
         try? data.write(to: URL(fileURLWithPath: tmpPath))
 
+        // bootout before bootstrap so an existing registration with a stale
+        // CDHash (from a previous build) is cleared first. Otherwise launchd
+        // kills the new binary at startup with OS_REASON_CODESIGNING.
         let script = """
-        do shell script "cp '\(tmpPath)' '\(systemPlistPath)' && chown root:wheel '\(systemPlistPath)' && chmod 644 '\(systemPlistPath)' && launchctl bootstrap system '\(systemPlistPath)' 2>/dev/null; launchctl enable 'system/\(daemonLabel)' 2>/dev/null; launchctl kickstart -k 'system/\(daemonLabel)' 2>/dev/null" with administrator privileges with prompt "tappitytap needs to install its background helper, which reads the accelerometer (requires root)."
+        do shell script "launchctl bootout 'system/\(daemonLabel)' 2>/dev/null; cp '\(tmpPath)' '\(systemPlistPath)' && chown root:wheel '\(systemPlistPath)' && chmod 644 '\(systemPlistPath)' && launchctl bootstrap system '\(systemPlistPath)'" with administrator privileges with prompt "tappitytap needs to install its background helper, which reads the accelerometer (requires root)."
         """
         runOSAScript(script)
         refreshDaemonStatus()

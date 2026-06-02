@@ -60,10 +60,14 @@ EOF
 # requires a Developer ID signature — out of scope for an ad-hoc build.
 
 echo "==> Ad-hoc signing"
-# Sign the helper first (inner content), then the whole bundle.
-codesign --force --options runtime --sign - "$APP/Contents/MacOS/tappitytap-helper"
-codesign --force --options runtime --sign - "$APP/Contents/MacOS/tappitytap"
-codesign --force --deep --options runtime --sign - "$APP"
+# Note: do NOT pass --options runtime here. On macOS 26 the hardened-runtime
+# page-protection check rejects ad-hoc-signed pages at execve time with
+# "tainted:1" in the kernel log, killing the process before main() runs.
+# Hardened runtime needs a real Developer ID signature; ad-hoc-only is fine
+# for local install as long as we don't claim hardened runtime.
+codesign --force --sign - "$APP/Contents/MacOS/tappitytap-helper"
+codesign --force --sign - "$APP/Contents/MacOS/tappitytap"
+codesign --force --deep --sign - "$APP"
 
 echo
 echo "Built $APP"

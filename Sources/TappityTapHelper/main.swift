@@ -5,6 +5,14 @@ import Dispatch
 import Darwin
 import TappityTapShared
 
+// When stdout/stderr are redirected to a file (which is what launchd does
+// via StandardOutPath / StandardErrorPath), Swift's print() goes through a
+// fully buffered FILE*, so nothing reaches the log until ~4 KB accumulates
+// or the process exits. That made the daemon's logs look empty during
+// debugging. Disable buffering so each print() flushes immediately.
+setbuf(stdout, nil)
+setbuf(stderr, nil)
+
 // =====================================================================
 // MARK: - Constants
 // =====================================================================
@@ -19,7 +27,11 @@ let SAMPLE_HZ: Double = 1000.0
 let GRAVITY_TAU_S: Double = 1.0
 let STA_TAU_S: Double = 0.001
 let PEAK_WINDOW_S: Double = 0.008
-let HISTORY_MS = 20
+let HISTORY_MS = 20             // short window for rising-edge valley
+let REST_HISTORY_MS = 200       // long window for "chassis at rest" gate
+let REST_FLOOR_G = 0.020        // STA must dip below this within REST_HISTORY_MS
+                                // for the chassis to count as "recently at rest".
+                                // Suppresses triggers during pickup / walking / etc.
 let PRIME_SAMPLES = 200
 
 // =====================================================================
@@ -185,6 +197,8 @@ var peakStaInWindow: Double = 0
 
 var history = [Double](repeating: 0, count: HISTORY_MS)
 var historyHead = 0
+var restHistory = [Double](repeating: 0, count: REST_HISTORY_MS)
+var restHead = 0
 
 func emaAlpha(tauSeconds: Double) -> Double {
     return 1.0 - exp(-1.0 / (tauSeconds * SAMPLE_HZ))
@@ -206,6 +220,8 @@ func processSample(x: Double, y: Double, z: Double) {
 
     history[historyHead] = sta
     historyHead = (historyHead + 1) % HISTORY_MS
+    restHistory[restHead] = sta
+    restHead = (restHead + 1) % REST_HISTORY_MS
 
     samplesSeen += 1
     if samplesSeen < PRIME_SAMPLES { return }
@@ -239,7 +255,17 @@ func processSample(x: Double, y: Double, z: Double) {
     var minRecent = sta
     for s in history where s < minRecent { minRecent = s }
     let rise = sta - minRecent
-    if rise > tuning.deltaG && sta > tuning.minPeakG {
+
+    // Rest gate: only allow a trigger if the chassis was at rest at some
+    // point in the last REST_HISTORY_MS. Sustained motion (lifting, walking,
+    // setting the laptop down) keeps STA above the rest floor for the whole
+    // window, so triggers stay suppressed throughout. Drumming with a hand-off
+    // chassis keeps inter-tap STA near zero, so triggers fire normally.
+    var restMin = sta
+    for s in restHistory where s < restMin { restMin = s }
+    let chassisRecentlyAtRest = restMin < REST_FLOOR_G
+
+    if rise > tuning.deltaG && sta > tuning.minPeakG && chassisRecentlyAtRest {
         state = .peakCapture
         stateRemaining = PEAK_WINDOW_SAMPLES
         peakStaInWindow = sta

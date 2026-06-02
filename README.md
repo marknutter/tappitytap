@@ -100,6 +100,9 @@ tappitytap/
 
 ## Troubleshooting
 
+- **After rebuilding the .app, the helper won't start.** launchd caches the previous binary's code signature; when you overwrite it the new (ad-hoc) signature doesn't match the cached one and the daemon exits with `OS_REASON_CODESIGNING`. Recover with `sudo launchctl bootout system/com.marknutter.tappitytap.helper && sudo launchctl bootstrap system /Library/LaunchDaemons/com.marknutter.tappitytap.helper.plist`. (Future installs via the menu **Install Helper** button already do this dance automatically.)
+- **Helper killed at exec with `tainted:1` in `log show`.** Hardened runtime + ad-hoc signing rejects on macOS 26. `scripts/build-app.sh` no longer passes `--options runtime` — if you have an old install that does, re-sign in place: `codesign --force --deep --sign - /Applications/tappitytap.app`.
+- **App says "no helper" even though `launchctl print` shows `state = running`.** The socket file at `/tmp/tappitytap.sock` is dangling — the helper's listen socket got orphaned because something else unlinked the path (most commonly: you ran `sudo .build/.../tappitytap-helper` interactively while the daemon was also alive, and Ctrl-C'd the interactive one). Recover with `sudo rm -f /tmp/tappitytap.sock && sudo launchctl kickstart -k system/com.marknutter.tappitytap.helper`. To avoid this, stop the daemon before running the helper interactively: `sudo launchctl bootout system/com.marknutter.tappitytap.helper`.
 - **App shows "no helper".** The helper isn't running, or `/tmp/tappitytap.sock` is missing. Start the helper with `sudo .build/debug/tappitytap-helper` and the app will auto-reconnect within ~1 s.
 - **Helper exits with "IOHIDManagerOpen failed".** You didn't run it with `sudo`.
 - **Spurious double-fires per tap.** Move the **Debounce** slider higher.
